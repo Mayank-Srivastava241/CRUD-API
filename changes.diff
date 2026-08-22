@@ -1,0 +1,141 @@
+diff --git a/main.py b/main-ai.py
+index 62d320f..c456fc3 100644
+--- a/main.py
++++ b/main-ai.py
+@@ -1,62 +1,73 @@
+-from fastapi import FastAPI
+-from .model import Task
+-api = FastAPI()
+-
+-tasks:list[Task] = [
+-    {
+-        "id": 2,
+-        "task": "Want to be the very best",
+-        "due": "2026-08-22T10:00:49.735Z"
+-    },
+-    {
+-        "id": 3,
+-        "task": "Like no one ever was",
+-        "due": "2026-08-23T12:00:00.000Z"
+-    },
+-    {
+-        "id": 4,
+-        "task": "To catch them is my real test",
+-        "due": "2026-08-24T15:30:00.000Z"
+-    }
+-
+-]
+-
+-@api.get("/")
+-def greet():
+-    return "Welcome to My CRUD API server"
+-
+-@api.get('/fetch_task')
+-def fetch_task():
+-    if tasks:
+-        return tasks
+-    return "No tasks Pending"
+-
+-@api.get("/fetch_task/{id}")
+-def fetch_by_id( id : int):
+-    for task in tasks:
+-        if task["id"] == id:
+-            return task
+-    return "No task Found"
+-
+-@api.post("/add_task")
+-def add_task(task:list[Task]):
+-    if task:
+-        tasks.append(task)
+-        return task
+-    return "enter a proper task"
+-
+-@api.put("/update_task/{id}")
+-def update_task(id :int,task:Task):
+-    for i in range(len(tasks)):
+-        if tasks[i]["id"] == id:
+-            tasks[i] = task
+-            return "Item Updated"
+-    return "No item found to be updated"
+-
+-@api.delete("/delete_task/{id}")
+-def delete_task(id:int):
+-    for i in range(len(tasks)):
+-        if(tasks[i]["id"] == id):
+-            del tasks[i]
+-            return f"Item id:{id} deleted"
+-    return "Item not found"
++from fastapi import FastAPI, HTTPException, status
++from pydantic import BaseModel, Field
++from typing import List, Optional
++from uuid import UUID, uuid4
++
++app = FastAPI(title="To-Do List API")
++
++# --- Pydantic Schemas ---
++
++class TodoBase(BaseModel):
++    title: str = Field(..., min_length=1, max_length=100, example="Buy groceries")
++    description: Optional[str] = Field(None, max_length=300, example="Milk, eggs, and bread")
++    completed: bool = Field(default=False, example=False)
++
++class TodoCreate(TodoBase):
++    pass
++
++class TodoUpdate(BaseModel):
++    title: Optional[str] = Field(None, min_length=1, max_length=100)
++    description: Optional[str] = Field(None, max_length=300)
++    completed: Optional[bool] = None
++
++class TodoResponse(TodoBase):
++    id: UUID
++
++# --- In-Memory Storage ---
++
++todo_db: dict[UUID, TodoResponse] = {}
++
++# --- CRUD Endpoints ---
++
++# 1. CREATE: Add a new To-Do item
++@app.post("/todos", response_model=TodoResponse, status_code=status.HTTP_201_CREATED)
++def create_todo(todo_in: TodoCreate):
++    new_id = uuid4()
++    todo_item = TodoResponse(id=new_id, **todo_in.model_dump())
++    todo_db[new_id] = todo_item
++    return todo_item
++
++# 2. READ: Get all To-Do items (with optional completion filter)
++@app.get("/todos", response_model=List[TodoResponse], status_code=status.HTTP_200_OK)
++def get_all_todos(completed: Optional[bool] = None):
++    if completed is not None:
++        return [item for item in todo_db.values() if item.completed == completed]
++    return list(todo_db.values())
++
++# 3. READ: Get a single To-Do item by ID
++@app.get("/todos/{todo_id}", response_model=TodoResponse, status_code=status.HTTP_200_OK)
++def get_todo_by_id(todo_id: UUID):
++    if todo_id not in todo_db:
++        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="To-Do item not found")
++    return todo_db[todo_id]
++
++# 4. UPDATE: Modify an existing To-Do item
++@app.put("/todos/{todo_id}", response_model=TodoResponse, status_code=status.HTTP_200_OK)
++def update_todo(todo_id: UUID, todo_update: TodoUpdate):
++    if todo_id not in todo_db:
++        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="To-Do item not found")
++    
++    stored_item = todo_db[todo_id]
++    update_data = todo_update.model_dump(exclude_unset=True)
++    updated_item = stored_item.model_copy(update=update_data)
++    
++    todo_db[todo_id] = updated_item
++    return updated_item
++
++# 5. DELETE: Remove a To-Do item
++@app.delete("/todos/{todo_id}", status_code=status.HTTP_204_NO_CONTENT)
++def delete_todo(todo_id: UUID):
++    if todo_id not in todo_db:
++        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="To-Do item not found")
++    del todo_db[todo_id]
++    return None
+\ No newline at end of file
