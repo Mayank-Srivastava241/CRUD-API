@@ -1,0 +1,7 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - /media/mayank/1978B452413EEDBB/sqlite_db:/app/data
